@@ -1,37 +1,55 @@
 import time
-import save  # Import the save module
+import os
+import save  # Calls save.py to store extracted jobs
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
+from webdriver_manager.chrome import ChromeDriverManager
 
 def scrape_jobs(email, password, job_type, delay_time):
-    job_data = []  # List to store extracted job data
+    job_data = []
 
-    # Selenium WebDriver setup
+    # Initialize Chrome WebDriver
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920x1080")
+    chrome_options.add_argument("--no-sandbox")  # For Linux
 
-    service = Service("chromedriver")  # Ensure chromedriver is in your folder
+    # Use WebDriver Manager to auto-download ChromeDriver
+    service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
-        # Open LinkedIn and log in
+        # Open LinkedIn login page
         driver.get("https://www.linkedin.com/login")
-        time.sleep(2)
+        time.sleep(3)  # Give time for the page to load
 
-        driver.find_element(By.ID, "username").send_keys(email)
-        driver.find_element(By.ID, "password").send_keys(password)
-        driver.find_element(By.XPATH, "//button[@type='submit']").click()
-        time.sleep(delay_time)
+        # Enter Email
+        email_input = driver.find_element(By.ID, "username")
+        email_input.clear()
+        email_input.send_keys(email)
+        time.sleep(1)
 
-        # Search for jobs
+        # Enter Password
+        password_input = driver.find_element(By.ID, "password")
+        password_input.clear()
+        password_input.send_keys(password)
+        time.sleep(1)
+
+        # Click Sign In Button
+        sign_in_button = driver.find_element(By.XPATH, "//button[@type='submit']")
+        sign_in_button.click()
+
+        print("Login successful, waiting for LinkedIn to load...")
+        time.sleep(5)  # Wait for LinkedIn to load after login
+
+        # Navigate to Jobs page
         driver.get("https://www.linkedin.com/jobs")
         time.sleep(2)
+
+        # Search for the job type
         search_box = driver.find_element(By.XPATH, "//input[contains(@placeholder,'Search jobs')]")
         search_box.send_keys(job_type)
         search_box.send_keys(Keys.RETURN)
@@ -42,10 +60,9 @@ def scrape_jobs(email, password, job_type, delay_time):
 
         for job in job_cards:
             try:
-                ActionChains(driver).move_to_element(job).click().perform()
+                job.click()
                 time.sleep(2)
 
-                # Extract job details
                 title = driver.find_element(By.CLASS_NAME, "topcard__title").text
                 company = driver.find_element(By.CLASS_NAME, "topcard__org-name-link").text
                 location = driver.find_element(By.CLASS_NAME, "topcard__flavor").text
@@ -72,7 +89,6 @@ def scrape_jobs(email, password, job_type, delay_time):
                     hr_name = "N/A"
                     hr_link = "N/A"
 
-                # Store job details
                 job_data.append({
                     "Job Title": title,
                     "Posted On": posted_on,
@@ -88,11 +104,10 @@ def scrape_jobs(email, password, job_type, delay_time):
                 print(f"Skipping job due to error: {e}")
 
         driver.quit()
-
-        # Pass data to save.py for storage
         save.save_to_excel(job_data)
+        return job_data  # Return data to `main.py`
 
     except Exception as e:
-        driver.quit()
         print(f"Error in extraction: {e}")
-
+        driver.quit()
+        return None  # Return None in case of failure
